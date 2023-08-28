@@ -1,0 +1,55 @@
+import subprocess
+import numpy as np
+import tflite_runtime.interpreter as tflite
+from PIL import Image
+
+# Initialize the TFLite interpreter
+interpreter = tflite.Interpreter(model_path='/home/twingella/autonomous/models/model.tflite')
+interpreter.allocate_tensors()
+
+# Get input and output details
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+# Get the expected shape of the input tensor
+expected_shape = input_details[0]['shape']
+print("Expected input shape:", expected_shape)
+
+# Capture an image using libcamera
+subprocess.run(["libcamera-still", "-o", "frame.jpg"])
+
+# # Load and preprocess the image
+# image = Image.open('frame.jpg').convert('RGB')
+# image_np = np.array(image).reshape(expected_shape)
+# print("Original shape:", image_np.shape)
+
+# # Check if the captured image shape matches the expected input shape
+# if image_np.shape[0:2] == tuple(expected_shape[1:3]):
+#     input_array = np.expand_dims(image_np, axis=0)
+# else:
+#     print(f"Cannot reshape image of shape {image_np.shape} to expected shape {expected_shape}")
+#     exit
+
+# Load and preprocess the image
+image = Image.open('frame.jpg').convert('RGB')
+image_np = np.array(image)
+image_np = image_np.resize((expected_shape[1], expected_shape[2]))
+
+# ここで形状の一致をチェック
+print("Actual image shape:", image_np.shape)
+
+if image_np.shape[:2] == tuple(expected_shape[1:3]):
+    input_array = np.expand_dims(image_np, axis=0)
+else:
+    print(f"Cannot reshape image of shape {image_np.shape} to expected shape {expected_shape}")
+    exit(1)
+
+# 仮にモデルの期待する形状が(1, 224, 224, 3)であるとします。
+expected_shape = [1, 224, 224, 3]
+
+# 画像の読み込みとリサイズ
+image = Image.open('frame.jpg').convert('RGB').resize((expected_shape[1], expected_shape[2]))
+
+# Numpy配列への変換と形状の変更
+image_np = np.array(image)
+input_array = image_np.reshape(expected_shape)
