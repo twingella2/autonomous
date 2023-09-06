@@ -1,126 +1,70 @@
-# import subprocess
-# import numpy as np
-# import tflite_runtime.interpreter as tflite
-# from PIL import Image
-
-# def main():
-#     # Initialize the TFLite interpreter
-#     interpreter = tflite.Interpreter(model_path='/home/twingella/autonomous/models/model.tflite')
-#     interpreter.allocate_tensors()
-
-#     # Get input and output details
-#     input_details = interpreter.get_input_details()
-#     output_details = interpreter.get_output_details()
-
-#     # Get the expected shape of the input tensor
-#     expected_shape = input_details[0]['shape']
-#     print("Expected input shape:", expected_shape)
-
-#     # Capture an image using libcamera
-#     subprocess.run(["libcamera-still", "-o", "frame.jpg"])
-
-#     # Load and preprocess the image
-#     image = Image.open('frame.jpg').convert('RGB')
-#     image_resized = image.resize((expected_shape[1], expected_shape[2]))
-#     image_np = np.array(image_resized)
-
-#     # Check if the captured image shape matches the expected input shape
-#     print("Actual image shape:", image_np.shape)
-
-#     if image_np.shape[:2] == tuple(expected_shape[1:3]):
-#         input_array = np.expand_dims(image_np, axis=0)
-#     else:
-#         print(f"Cannot reshape image of shape {image_np.shape} to expected shape {expected_shape}")
-#         exit(1)
-
-#     # Perform inference
-#     interpreter.set_tensor(input_details[0]['index'], input_array.astype(np.uint8))
-#     interpreter.invoke()
-
-#     # Get the output tensor
-#     output_data = interpreter.get_tensor(output_details[0]['index'])
-
-#     # Check the size of the output_data
-#     output_size = len(output_data[0])
-
-#     # Analyze the output (Example: get the index of the most confident object detected)
-#     max_index = np.argmax(output_data[0])
-
-#     if max_index < output_size:
-#         print(f"Detected object: {output_data[0][max_index]}")
-#     else:
-#         print(f"Index out of bounds. Max index: {max_index}, Output size: {output_size}")
-
-# if __name__ == "__main__":
-#     main()
-
 import cv2
 import numpy as np
 import tflite_runtime.interpreter as tflite
 from PIL import Image
 
 def main():
-    # Initialize the TFLite interpreter
-    interpreter = tflite.Interpreter(model_path='/home/twingella/autonomous/models/model.tflite')
-    interpreter.allocate_tensors()
+    cap = None
+    try:
+        # Initialize the TFLite interpreter
+        interpreter = tflite.Interpreter(model_path='/home/twingella/autonomous/models/model.tflite')
+        interpreter.allocate_tensors()
 
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
+        # Get input and output details
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
 
-    expected_shape = input_details[0]['shape']
-    print("Expected input shape:", expected_shape)
+        # Initialize the video capture
+        camera_id = 0  # Change this if your camera ID is different
+        cap = cv2.VideoCapture(camera_id)
 
-    # Load YOLO
-    net = cv2.dnn.readNet("yolov3.weights", "yolov3.cfg")
-    layer_names = net.getLayerNames()
-    output_layers = [layer_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
+        if not cap.isOpened():
+            raise Exception("Error: Couldn't open the camera.")
 
-    # Capture an image using OpenCV
-    cap = cv2.VideoCapture(0)
-    _, frame = cap.read()
-    height, width, channels = frame.shape
+        while True:
+            ret, frame = cap.read()
+            
+            if not ret:
+                break
 
-    # Detecting objects using YOLO
-    blob = cv2.dnn.blobFromImage(frame, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
-    net.setInput(blob)
-    outs = net.forward(output_layers)
+            # Convert the frame to PIL Image and resize
+            image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            expected_shape = input_details[0]['shape'][1:3]
+            image_resized = image.resize(expected_shape)
+            image_np = np.array(image_resized)
 
-    class_ids = []
-    confidences = []
-    boxes = []
+            # Prepare the input tensor
+            input_array = np.expand_dims(image_np, axis=0)
 
-    for out in outs:
-        for detection in out:
-            scores = detection[5:]
-            class_id = np.argmax(scores)
-            confidence = scores[class_id]
-            if confidence > 0.5:
-                # Object detected
-                center_x = int(detection[0] * width)
-                center_y = int(detection[1] * height)
-                w = int(detection[2] * width)
-                h = int(detection[3] * height)
+            # Perform inference
+            interpreter.set_tensor(input_details[0]['index'], input_array.astype(np.uint8))
+            interpreter.invoke()
 
-                # Rectangle coordinates
-                x = int(center_x - w / 2)
-                y = int(center_y - h / 2)
+            # Get the output tensor
+            output_data = interpreter.get_tensor(output_details[0]['index'])
+            
+            # Get the index of the most confident object detected
+            max_index = np.argmax(output_data[0])
+            
+            # Replace with actual label if available
+            label = f"Object detected: {max_index}"
 
-                boxes.append([x, y, w, h])
-                confidences.append(float(confidence))
-                class_ids.append(class_id)
+            # Overlay the label on the frame
+            cv2.putText(frame, label, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
 
-    indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
+            # Display the frame
+            cv2.imshow('Object Detection', frame)
 
-    for i in range(len(boxes)):
-        if i in indexes:
-            label = str(classes[class_ids[i]])
-            confidence = confidences[i]
-            cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-            cv2.putText(frame, label + " " + str(round(confidence, 2)), (x, y + 30), font, 2, (255,255,255), 2)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
-    cv2.imshow("Image", frame)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+    finally:
+        if cap:
+            cap.release()
+        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()

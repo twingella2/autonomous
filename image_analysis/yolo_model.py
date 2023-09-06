@@ -7,7 +7,7 @@ import cv2
 class YOLOModel:
     def __init__(self, model_path):
         # TensorFlow Liteモデルをロード
-        self.interpreter = tf.lite.Interpreter(model_path=model_path)
+        self.interpreter = tf.lite.Interpreter(model_path="/home/twingella/autonomous/models/model.tflite")
         self.interpreter.allocate_tensors()
 
         # 入力と出力の詳細を取得
